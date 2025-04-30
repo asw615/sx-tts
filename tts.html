@@ -1,0 +1,255 @@
+</style>
+</head>
+<body>
+  <!-- 1) CSS for loader animation -->
+  <style>
+    .loader {
+      width: 16px;
+      margin-left: 10px;
+      aspect-ratio: 1;
+      display: inline-block;
+      vertical-align: middle;
+      --c: no-repeat linear-gradient(#000 0 0);
+      background: 
+        var(--c) 0% 50%,
+        var(--c) 50% 50%,
+        var(--c) 100% 50%;
+      background-size: 20% 100%;
+      animation: l1 1s infinite linear;
+    }
+    @keyframes l1 {
+      0%   { background-size: 20% 100%, 20% 100%, 20% 100% }
+      33%  { background-size: 20% 10%,  20% 100%, 20% 100% }
+      50%  { background-size: 20% 100%, 20% 10%,  20% 100% }
+      66%  { background-size: 20% 100%, 20% 100%, 20% 10%  }
+      100% { background-size: 20% 100%, 20% 100%, 20% 100% }
+    }
+  </style>
+
+  <script>
+  document.addEventListener('DOMContentLoaded', async function() {
+    // ----------------------------------------------------------------------
+    // 1) Fetch the single TTS mapping (keys for both da, en, etc.)
+    // ----------------------------------------------------------------------
+    const TTS_MAPPING_URL = "https://asw615.github.io/surveyxact-tts/tts_mapping.json";
+    let ttsMapping = {};
+    try {
+      const response = await fetch(TTS_MAPPING_URL);
+      ttsMapping = await response.json();
+      console.log("Single TTS Mapping loaded:", ttsMapping);
+    } catch (error) {
+      console.error("Failed to load TTS mapping:", error);
+    }
+
+    // ----------------------------------------------------------------------
+    // 2) Loader animation
+    // ----------------------------------------------------------------------
+    function startReadingAnimation(iconElem) {
+      iconElem.style.display = "none";
+      const loader = document.createElement("div");
+      loader.className = "loader";
+      iconElem.parentNode.insertBefore(loader, iconElem.nextSibling);
+      iconElem._currentAnim = loader;
+    }
+    function stopReadingAnimation(iconElem) {
+      if (iconElem._currentAnim) {
+        iconElem._currentAnim.remove();
+        iconElem._currentAnim = null;
+      }
+      iconElem.style.display = "inline-block";
+    }
+
+    // ----------------------------------------------------------------------
+    // 3) Cleanup text to avoid invisible chars or double spaces
+    // ----------------------------------------------------------------------
+    function cleanupText(rawText) {
+      return rawText
+        .replace(/\u00a0/g, " ") // convert non-breaking space
+        .replace(/\s+/g, " ")    // collapse multiple spaces
+        .trim();
+    }
+
+    // ----------------------------------------------------------------------
+    // 4) Function to play TTS from the single mapping
+    // ----------------------------------------------------------------------
+    function playTTS(rawText, iconElem) {
+      if (!ttsMapping) {
+        console.warn("ttsMapping is not loaded or empty.");
+        return;
+      }
+      const text = cleanupText(rawText);
+      if (ttsMapping[text]) {
+        // We have a match in the JSON
+        const audio = new Audio(ttsMapping[text]);
+        audio.play();
+        startReadingAnimation(iconElem);
+        audio.onended = () => stopReadingAnimation(iconElem);
+      } else {
+        console.warn(`No TTS audio found for text: "${text}" (raw: "${rawText}")`);
+      }
+    }
+
+    // ----------------------------------------------------------------------
+    // 5) Speaker icon
+    // ----------------------------------------------------------------------
+    const SPEAKER_ICON_URL = "https://upload.wikimedia.org/wikipedia/commons/thumb/2/21/Speaker_Icon.svg/480px-Speaker_Icon.svg.png";
+
+    // ----------------------------------------------------------------------
+    // 6) Classes that get a speaker icon
+    // ----------------------------------------------------------------------
+    const targetClasses = [
+      "text-element",
+      "question-title",
+      "closed-vertical-choice",
+      "row-header-text",
+      "battery-grid"
+    ];
+
+    // ----------------------------------------------------------------------
+    // 7) Container for questions
+    // ----------------------------------------------------------------------
+    const questionsContainer = document.querySelector("div.questions");
+    if (!questionsContainer) {
+      console.error("Questions container not found.");
+      return;
+    }
+
+    // ----------------------------------------------------------------------
+    // 8) Insert speaker icons, skipping battery radio/checkbox
+    // ----------------------------------------------------------------------
+    targetClasses.forEach(cls => {
+      const elems = questionsContainer.getElementsByClassName(cls);
+      Array.from(elems).forEach(elem => {
+        // Skip if already has an icon
+        if (elem.classList.contains("audio-icon-added")) return;
+        if (!elem.id) {
+          elem.id = "elem_" + Math.random().toString(36).substr(2, 9);
+        }
+
+        // If the element is inside .battery-grid AND has <input> or <label>,
+        // skip it (no icon).
+        const inBattery = !!elem.closest(".battery-grid");
+        if (inBattery && (elem.querySelector("input") || elem.querySelector("label"))) {
+          return;
+        }
+
+        // Check if inside a <td>
+        const inTableCell = !!elem.closest("td");
+
+        // A) If "closed-vertical-choice"
+        if (cls === "closed-vertical-choice") {
+          if (elem.tagName.toLowerCase() === "label") {
+            // Keep label + icon inline
+            elem.style.display = "inline-flex";
+            elem.style.alignItems = "center";
+
+            const icon = document.createElement("img");
+            icon.src = SPEAKER_ICON_URL;
+            icon.alt = "Speaker";
+            icon.style.width = "24px";
+            icon.style.height = "24px";
+            icon.style.marginLeft = "4px";
+            icon.style.cursor = "pointer";
+            icon.style.display = "inline-block";
+            icon.style.verticalAlign = "middle";
+
+            icon.addEventListener("click", function(e) {
+              e.preventDefault();
+              const text = elem.innerText;
+              if (!text) return;
+              playTTS(text, iconElem = icon);
+            });
+
+            elem.appendChild(icon);
+            // Insert a <br> after, per your original “correct” script
+            elem.insertAdjacentHTML("afterend", "<br>");
+            elem.classList.add("audio-icon-added");
+
+          } else {
+            // If it's not a label, wrap in a span
+            const wrapper = document.createElement("span");
+            wrapper.style.display = "inline-flex";
+            wrapper.style.alignItems = "center";
+            elem.parentNode.insertBefore(wrapper, elem);
+            wrapper.appendChild(elem);
+
+            const icon = document.createElement("img");
+            icon.src = SPEAKER_ICON_URL;
+            icon.alt = "Speaker";
+            icon.style.width = "24px";
+            icon.style.height = "24px";
+            icon.style.marginLeft = "4px";
+            icon.style.cursor = "pointer";
+            icon.style.display = "inline-block";
+            icon.style.verticalAlign = "middle";
+
+            icon.addEventListener("click", function(e) {
+              e.preventDefault();
+              const text = elem.innerText;
+              if (!text) return;
+              playTTS(text, icon);
+            });
+
+            wrapper.appendChild(icon);
+            wrapper.insertAdjacentHTML("afterend", "<br>");
+            elem.classList.add("audio-icon-added");
+          }
+
+        // B) Not in a table cell
+        } else if (!inTableCell) {
+          // Wrap in a div for inline-flex
+          const wrapper = document.createElement("div");
+          wrapper.style.display = "inline-flex";
+          wrapper.style.alignItems = "center";
+          elem.parentNode.insertBefore(wrapper, elem);
+          wrapper.appendChild(elem);
+
+          const icon = document.createElement("img");
+          icon.src = SPEAKER_ICON_URL;
+          icon.alt = "Speaker";
+          icon.style.width = "24px";
+          icon.style.height = "24px";
+          icon.style.marginLeft = "8px";
+          icon.style.cursor = "pointer";
+          icon.style.display = "inline-block";
+          icon.style.verticalAlign = "middle";
+
+          icon.addEventListener("click", function(e) {
+            e.preventDefault();
+            const text = elem.innerText;
+            if (!text) return;
+            playTTS(text, icon);
+          });
+
+          wrapper.appendChild(icon);
+          elem.classList.add("audio-icon-added");
+
+        // C) Inside a table cell
+        } else {
+          // Just append the icon at the end
+          const icon = document.createElement("img");
+          icon.src = SPEAKER_ICON_URL;
+          icon.alt = "Speaker";
+          icon.style.width = "24px";
+          icon.style.height = "24px";
+          icon.style.marginLeft = "4px";
+          icon.style.cursor = "pointer";
+          icon.style.display = "inline-block";
+          icon.style.verticalAlign = "middle";
+
+          icon.addEventListener("click", function(e) {
+            e.preventDefault();
+            const text = elem.innerText;
+            if (!text) return;
+            playTTS(text, icon);
+          });
+
+          elem.insertAdjacentElement("beforeend", icon);
+          elem.classList.add("audio-icon-added");
+        }
+      });
+    });
+  });
+  </script>
+</body>
+</html>
